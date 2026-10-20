@@ -23,6 +23,8 @@ button.mic{border:0;border-radius:16px;padding:18px;font:inherit;font-size:1.15r
 .you button.mic{background:var(--you)}.them button.mic{background:var(--them)}
 button.mic.on{background:var(--rec)!important}
 .tools{display:flex;gap:8px;font-size:.85rem}.tools button{flex:1;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.row2{display:flex;align-items:center;gap:8px}.row2 .tr{flex:1}
+button.say{flex:none;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--panel);font-size:1.2rem;cursor:pointer}
 .warn{background:#fff3cd;color:#5c4400;padding:10px;border-radius:12px;font-size:.9rem;display:none}
 </style>
 </head>
@@ -39,6 +41,7 @@ button.mic.on{background:var(--rec)!important}
 <div class="tools">
   <button id="flip">↕ Flip top half</button>
   <button id="swap">⇄ Swap languages</button>
+  <button id="voice">🔊 Voice: On</button>
   <button id="clear">🗑 Clear</button>
 </div>
 
@@ -72,22 +75,53 @@ async function translate(text,from,to){
     const j=await r.json();return j.responseData.translatedText;
   }
 }
-function speak(text,lang){
-  if(!window.speechSynthesis) return;
-  speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(text);u.lang=lang;
-  const v=speechSynthesis.getVoices().find(v=>v.lang.replace("_","-").startsWith(lang.split("-")[0]));
-  if(v)u.voice=v;speechSynthesis.speak(u);
+/* ---- Voice response ---- */
+let VOICES=[];
+function loadVoices(){if(window.speechSynthesis)VOICES=speechSynthesis.getVoices()}
+loadVoices();
+if(window.speechSynthesis) speechSynthesis.onvoiceschanged=loadVoices;
+const player=new Audio();
+let voiceOn=load("voiceOn","1")==="1";
+function showVoice(){$("voice").textContent=voiceOn?"🔊 Voice: On":"🔇 Voice: Off"}
+function pickVoice(lang){
+  const norm=v=>v.lang.replace("_","-").toLowerCase(), want=lang.toLowerCase(), base=want.split("-")[0];
+  const exact=VOICES.filter(v=>norm(v)===want), close=VOICES.filter(v=>norm(v).split("-")[0]===base);
+  const pool=exact.length?exact:close;
+  return pool.find(v=>/google/i.test(v.name))||pool.find(v=>v.localService)||pool[0]||null;
 }
-function add(logId,orig,tr){
+/* Phones only allow sound that starts from a tap, so "wake up" the speaker on every mic tap */
+function unlockSound(){
+  try{if(window.speechSynthesis){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(" ");u.volume=0;speechSynthesis.speak(u)}}catch(e){}
+  try{player.muted=true;player.src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";const p=player.play();if(p)p.catch(()=>{}).finally(()=>{player.muted=false})}catch(e){}
+}
+function onlineVoice(text,lang){
+  player.muted=false;
+  player.src="https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl="+lang.split("-")[0]+"&q="+encodeURIComponent(text.slice(0,200));
+  return player.play();
+}
+function speak(text,lang){
+  if(!voiceOn||!text) return;
+  const v=pickVoice(lang);
+  if(window.speechSynthesis&&v){
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);u.lang=lang;u.voice=v;u.rate=0.95;
+    u.onerror=()=>onlineVoice(text,lang).catch(()=>{});
+    speechSynthesis.speak(u);
+  }else{
+    onlineVoice(text,lang).catch(()=>status("Tap 🔊 on the message to hear it"));
+  }
+}
+function add(logId,orig,tr,lang){
   const d=document.createElement("div");d.className="msg";
-  d.innerHTML='<div class="orig"></div><div class="tr"></div>';
+  d.innerHTML='<div class="orig"></div><div class="row2"><div class="tr"></div><button class="say" aria-label="Play out loud">🔊</button></div>';
   d.querySelector(".orig").textContent=orig;d.querySelector(".tr").textContent=tr;
+  d.querySelector(".say").onclick=()=>{const was=voiceOn;voiceOn=true;speak(tr,lang);voiceOn=was};
   $(logId).appendChild(d);$(logId).scrollTop=1e9;
 }
 function listen(who){
   if(!SR) return;
   if(rec){rec.stop();return}
+  unlockSound();
   const fromSel=who==="you"?"youLang":"themLang",toSel=who==="you"?"themLang":"youLang";
   const from=$(fromSel).value,to=$(toSel).value;
   rec=new SR();rec.lang=from;rec.interimResults=false;rec.maxAlternatives=1;
@@ -95,7 +129,7 @@ function listen(who){
   rec.onresult=async e=>{
     const text=e.results[0][0].transcript;status("Translating…");
     try{const tr=await translate(text,from,to);
-      add(who==="you"?"themLog":"youLog",text,tr);add(who==="you"?"youLog":"themLog",text,tr);
+      add(who==="you"?"themLog":"youLog",text,tr,to);add(who==="you"?"youLog":"themLog",text,tr,to);
       speak(tr,to);status("Ready");
     }catch(err){status("No internet? Try again.")}
   };
@@ -107,7 +141,8 @@ $("youMic").onclick=()=>listen("you");$("themMic").onclick=()=>listen("them");
 $("flip").onclick=()=>$("themBox").classList.toggle("flip");
 $("swap").onclick=()=>{const a=$("youLang").value;$("youLang").value=$("themLang").value;$("themLang").value=a;save("youLang",$("youLang").value);save("themLang",$("themLang").value)};
 $("clear").onclick=()=>{$("youLog").innerHTML="";$("themLog").innerHTML=""};
-if(window.speechSynthesis) speechSynthesis.onvoiceschanged=()=>{};
+$("voice").onclick=()=>{voiceOn=!voiceOn;save("voiceOn",voiceOn?"1":"0");showVoice();if(voiceOn){unlockSound()}};
+showVoice();
 </script>
 </body>
 </html>
