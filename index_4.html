@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f3b3a">
+<title>Kuumba Voice Translator</title>
+<style>
+:root{--bg:#f3f6f5;--panel:#fff;--fg:#14211f;--muted:#5b6b68;--you:#0f6b66;--them:#b4531f;--line:#d6dfdc;--rec:#c62828;
+--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1514;--panel:#16201f;--fg:#e7efed;--muted:#93a5a1;--you:#3fb5ad;--them:#f08a4f;--line:#26332f;--rec:#ef5350;color-scheme:dark}}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:18px/1.45 var(--font);display:flex;flex-direction:column;gap:10px;padding:10px 14px max(14px,env(safe-area-inset-bottom))}
+header{display:flex;justify-content:space-between;align-items:center}
+h1{font-size:1.1rem;margin:0}.status{font-size:.85rem;color:var(--muted)}
+.half{flex:1;display:flex;flex-direction:column;gap:10px;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px}
+.half.them.flip{transform:rotate(180deg)}
+select{width:100%;font:inherit;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.log{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:8px}
+.msg{padding:10px 12px;border-radius:12px;background:var(--bg)}
+.msg .orig{font-size:.85rem;color:var(--muted)}.msg .tr{font-size:1.15rem;font-weight:600}
+button.mic{border:0;border-radius:16px;padding:18px;font:inherit;font-size:1.15rem;font-weight:700;color:#fff;cursor:pointer}
+.you button.mic{background:var(--you)}.them button.mic{background:var(--them)}
+button.mic.on{background:var(--rec)!important}
+.tools{display:flex;gap:8px;font-size:.85rem}.tools button{flex:1;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.warn{background:#fff3cd;color:#5c4400;padding:10px;border-radius:12px;font-size:.9rem;display:none}
+</style>
+</head>
+<body>
+<header><h1>🌎 Voice Translator</h1><span class="status" id="status">Ready</span></header>
+<div class="warn" id="warn">This browser can't listen to speech. Please open this page in <b>Chrome</b>.</div>
+
+<section class="half them" id="themBox">
+  <select id="themLang" aria-label="Their language"></select>
+  <div class="log" id="themLog"></div>
+  <button class="mic" id="themMic">🎤 Tap and speak</button>
+</section>
+
+<div class="tools">
+  <button id="flip">↕ Flip top half</button>
+  <button id="swap">⇄ Swap languages</button>
+  <button id="clear">🗑 Clear</button>
+</div>
+
+<section class="half you">
+  <select id="youLang" aria-label="Your language"></select>
+  <div class="log" id="youLog"></div>
+  <button class="mic" id="youMic">🎤 Tap and speak</button>
+</section>
+
+<script>
+const LANGS=[["en-US","English"],["es-CO","Español"],["fr-FR","Français"],["pt-BR","Português"],["de-DE","Deutsch"],["it-IT","Italiano"],["zh-CN","中文"],["ja-JP","日本語"],["ko-KR","한국어"],["ar-SA","العربية"],["hi-IN","हिन्दी"],["ru-RU","Русский"],["sw-KE","Kiswahili"]];
+const $=id=>document.getElementById(id);
+for(const s of [$("youLang"),$("themLang")]) for(const [c,n] of LANGS){const o=document.createElement("option");o.value=c;o.textContent=n;s.appendChild(o)}
+function load(k,d){try{return localStorage.getItem(k)||d}catch(e){return d}}
+function save(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+$("youLang").value=load("youLang","en-US");$("themLang").value=load("themLang","es-CO");
+$("youLang").onchange=e=>save("youLang",e.target.value);$("themLang").onchange=e=>save("themLang",e.target.value);
+const status=t=>$("status").textContent=t;
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(!SR){$("warn").style.display="block"}
+let rec=null,activeBtn=null;
+
+async function translate(text,from,to){
+  const f=from.split("-")[0],t=to.split("-")[0];
+  if(f===t) return text;
+  try{
+    const r=await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl="+f+"&tl="+t+"&q="+encodeURIComponent(text));
+    const j=await r.json();return j[0].map(x=>x[0]).join("");
+  }catch(e){
+    const r=await fetch("https://api.mymemory.translated.net/get?langpair="+f+"|"+t+"&q="+encodeURIComponent(text));
+    const j=await r.json();return j.responseData.translatedText;
+  }
+}
+function speak(text,lang){
+  if(!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);u.lang=lang;
+  const v=speechSynthesis.getVoices().find(v=>v.lang.replace("_","-").startsWith(lang.split("-")[0]));
+  if(v)u.voice=v;speechSynthesis.speak(u);
+}
+function add(logId,orig,tr){
+  const d=document.createElement("div");d.className="msg";
+  d.innerHTML='<div class="orig"></div><div class="tr"></div>';
+  d.querySelector(".orig").textContent=orig;d.querySelector(".tr").textContent=tr;
+  $(logId).appendChild(d);$(logId).scrollTop=1e9;
+}
+function listen(who){
+  if(!SR) return;
+  if(rec){rec.stop();return}
+  const fromSel=who==="you"?"youLang":"themLang",toSel=who==="you"?"themLang":"youLang";
+  const from=$(fromSel).value,to=$(toSel).value;
+  rec=new SR();rec.lang=from;rec.interimResults=false;rec.maxAlternatives=1;
+  activeBtn=$(who+"Mic");activeBtn.classList.add("on");activeBtn.textContent="⏹ Listening… tap to stop";status("Listening…");
+  rec.onresult=async e=>{
+    const text=e.results[0][0].transcript;status("Translating…");
+    try{const tr=await translate(text,from,to);
+      add(who==="you"?"themLog":"youLog",text,tr);add(who==="you"?"youLog":"themLog",text,tr);
+      speak(tr,to);status("Ready");
+    }catch(err){status("No internet? Try again.")}
+  };
+  rec.onerror=e=>status(e.error==="not-allowed"?"Microphone blocked — tap the lock icon and allow it":"Didn't catch that — try again");
+  rec.onend=()=>{rec=null;activeBtn.classList.remove("on");activeBtn.textContent="🎤 Tap and speak";if($("status").textContent==="Listening…")status("Ready")};
+  rec.start();
+}
+$("youMic").onclick=()=>listen("you");$("themMic").onclick=()=>listen("them");
+$("flip").onclick=()=>$("themBox").classList.toggle("flip");
+$("swap").onclick=()=>{const a=$("youLang").value;$("youLang").value=$("themLang").value;$("themLang").value=a;save("youLang",$("youLang").value);save("themLang",$("themLang").value)};
+$("clear").onclick=()=>{$("youLog").innerHTML="";$("themLog").innerHTML=""};
+if(window.speechSynthesis) speechSynthesis.onvoiceschanged=()=>{};
+</script>
+</body>
+</html>
