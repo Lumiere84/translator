@@ -25,7 +25,8 @@ button.mic.on{background:var(--rec)!important}
 .tools{display:flex;gap:8px;font-size:.85rem}.tools button{flex:1;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
 .row2{display:flex;align-items:center;gap:8px}.row2 .tr{flex:1}
 button.say{flex:none;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--panel);font-size:1.2rem;cursor:pointer}
-.warn{background:#fff3cd;color:#5c4400;padding:10px;border-radius:12px;font-size:.9rem;display:none}
+.warn{background:#fff3cd;color:#5c4400;padding:12px;border-radius:12px;font-size:1rem;display:none;text-align:center}
+.openbtn{display:block;margin-top:10px;padding:16px;border-radius:14px;background:#0f6b66;color:#fff;font-weight:700;font-size:1.15rem;text-decoration:none}
 </style>
 </head>
 <body>
@@ -61,7 +62,21 @@ $("youLang").value=load("youLang","en-US");$("themLang").value=load("themLang","
 $("youLang").onchange=e=>save("youLang",e.target.value);$("themLang").onchange=e=>save("themLang",e.target.value);
 const status=t=>$("status").textContent=t;
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-if(!SR){$("warn").style.display="block"}
+/* Apps like WhatsApp open links in their own mini-browser, which can't use the microphone for speech */
+(function(){
+  const ua=navigator.userAgent, isAndroid=/Android/i.test(ua), isIOS=/iPhone|iPad|iPod/i.test(ua);
+  const inApp=/; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\/|Telegram/i.test(ua)||(isIOS&&!/Safari/i.test(ua));
+  if(!inApp&&SR) return;
+  const w=$("warn");w.style.display="block";
+  if(isAndroid){
+    const url="intent://"+location.host+location.pathname+"#Intent;scheme=https;package=com.android.chrome;end";
+    w.innerHTML='This app can\'t use the microphone.<br><a class="openbtn" href="'+url+'">Open in Chrome</a>';
+  }else if(isIOS){
+    w.innerHTML='This app can\'t use the microphone. Tap the <b>⋯</b> or <b>compass</b> button and choose <b>Open in Safari</b>.';
+  }else{
+    w.innerHTML='Please open this page in <b>Chrome</b>.';
+  }
+})();
 let rec=null,activeBtn=null;
 
 async function translate(text,from,to){
