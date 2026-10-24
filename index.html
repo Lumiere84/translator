@@ -242,26 +242,52 @@ function stopSpeaking(){
   try{player.pause()}catch(e){}
   if(S.stopSpeak)S.stopSpeak();
 }
-/* Returns a promise that finishes when the voice is done, so the mic never hears the phone talking */
+/* Returns a promise that finishes when the voice is done, so the mic never hears the phone talking.
+   Sound is tried in this order, and each step has a watchdog so it can never stay silent:
+   1) the phone's own voice for that language  2) the same, letting the phone pick the voice
+   3) Google's online voice (needs internet). */
 function speak(text,lang,force){
   return new Promise(resolve=>{
     const wanted=force||(S.mode==="listen"?S.listenVoice:S.voice);
     if(!wanted||!text) return resolve();
-    let finished=false;
-    const done=()=>{if(finished)return;finished=true;clearTimeout(timer);S.speaking=false;S.stopSpeak=null;resolve()};
-    const timer=setTimeout(done,4000+text.length*110/S.rate);
+    loadVoices();
+    let finished=false,watch=null,step=0;
+    const done=()=>{if(finished)return;finished=true;clearTimeout(timer);clearTimeout(watch);S.speaking=false;S.stopSpeak=null;resolve()};
+    const timer=setTimeout(done,8000+text.length*120/S.rate);
     S.speaking=true;S.stopSpeak=done;
     const online=()=>{
-      player.muted=false;player.onended=done;player.onerror=done;player.playbackRate=S.rate>1?1.15:1;
+      if(finished)return;clearTimeout(watch);
+      if(!navigator.onLine){status("No voice for "+short(lang)+" on this phone offline — text is on screen");done();return}
+      player.muted=false;player.volume=1;player.onended=done;player.onerror=()=>{status("Couldn't play sound — check phone volume");done()};
+      player.playbackRate=S.rate<0.9?0.85:1;
       player.src="https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl="+apiCode(lang)+"&q="+encodeURIComponent(text.slice(0,200));
       player.play().catch(()=>{status("Tap 🔊 on a message to hear it");done()});
     };
+    const phone=(useVoice)=>{
+      if(finished)return;
+      if(!window.speechSynthesis){online();return}
+      try{speechSynthesis.cancel()}catch(e){}
+      /* Short pause after cancel(): some Android phones ignore speak() if it comes right after cancel() */
+      setTimeout(()=>{
+        if(finished)return;
+        let started=false;
+        const u=new SpeechSynthesisUtterance(text);u.lang=lang;u.rate=S.rate;u.volume=1;
+        if(useVoice)u.voice=useVoice;
+        u.onstart=()=>{started=true;clearTimeout(watch)};
+        u.onend=()=>{if(started)done();else next()};
+        u.onerror=()=>next();
+        try{if(speechSynthesis.paused)speechSynthesis.resume();speechSynthesis.speak(u)}catch(e){next();return}
+        /* If the voice hasn't started within 2.5 seconds, it is silently stuck — move on */
+        watch=setTimeout(()=>{if(!started){try{speechSynthesis.cancel()}catch(e){}next()}},2500);
+      },150);
+    };
     const v=pickVoice(lang);
-    if(window.speechSynthesis&&v){
-      speechSynthesis.cancel();
-      const u=new SpeechSynthesisUtterance(text);u.lang=lang;u.voice=v;u.rate=S.rate;
-      u.onend=done;u.onerror=online;speechSynthesis.speak(u);
-    }else online();
+    const next=()=>{
+      if(finished)return;clearTimeout(watch);step++;
+      if(step===1&&v)phone(null);   /* try again, letting the phone choose its own voice */
+      else online();
+    };
+    if(v)phone(v);else if(window.speechSynthesis&&VOICES.length===0){step=1;phone(null)}else{step=1;online()}
   });
 }
 

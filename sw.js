@@ -4,7 +4,7 @@
    load with no connection. Translation of free text still needs the internet
    (no web page can translate any sentence offline) — that is handled in the
    page, which shows an "offline" banner and falls back to the phrasebook. */
-const C = "slt-v2";
+const C = "slt-v3";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest",
                "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
