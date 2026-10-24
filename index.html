@@ -58,6 +58,8 @@ form.type{display:flex;gap:6px}form.type button{flex:none;width:52px;border-radi
 .tools{display:flex;gap:6px;flex-wrap:wrap}
 .tools button{flex:1;min-width:64px;padding:8px 4px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg);font-size:.82rem}
 .warn{background:#fff3cd;color:#5c4400;padding:12px;border-radius:12px;font-size:1rem;display:none;text-align:center}
+.offbar{background:#4a3a1a;color:#ffe08a;padding:8px 12px;border-radius:12px;font-size:.9rem;display:none;text-align:center}
+.offbar.on{display:block}
 .openbtn{display:block;margin-top:10px;padding:14px;border-radius:14px;background:#0f6b66;color:#fff;font-weight:700;text-decoration:none}
 #install{display:none;background:var(--me);color:#fff;border:0;border-radius:10px;padding:6px 10px;font-size:.8rem;font-weight:700}
 .hide{display:none!important}
@@ -69,6 +71,7 @@ form.type{display:flex;gap:6px}form.type button{flex:none;width:52px;border-radi
   <div style="display:flex;gap:8px;align-items:center"><button id="install">⬇ Install app</button><span class="status" id="status">Ready</span></div>
 </header>
 <div class="warn" id="warn"></div>
+<div class="offbar" id="offbar">📴 <b>You're offline.</b> Common travel phrases still translate; full translation and live speech need internet.</div>
 
 <nav class="modes">
   <button data-mode="conv">💬 Conversation</button>
@@ -117,16 +120,30 @@ form.type{display:flex;gap:6px}form.type button{flex:none;width:52px;border-radi
 
 <script>
 /* ===== Setup ===== */
-const LANGS=[["en-US","English"],["es-CO","Español (Colombia)"],["es-ES","Español (España)"],["es-MX","Español (México)"],["fr-FR","Français"],["pt-BR","Português"],["de-DE","Deutsch"],["it-IT","Italiano"],["nl-NL","Nederlands"],["zh-CN","中文"],["ja-JP","日本語"],["ko-KR","한국어"],["ar-SA","العربية"],["hi-IN","हिन्दी"],["ru-RU","Русский"],["tr-TR","Türkçe"],["pl-PL","Polski"],["vi-VN","Tiếng Việt"],["th-TH","ไทย"],["id-ID","Bahasa Indonesia"],["sw-KE","Kiswahili"],["yo-NG","Yorùbá"],["zu-ZA","isiZulu"],["ht-HT","Kreyòl ayisyen"]];
+const LANGS=[["en-US","English"],["es-CO","Español (Colombia)"],["es-ES","Español (España)"],["es-MX","Español (México)"],["fr-FR","Français"],["pt-BR","Português"],["de-DE","Deutsch"],["it-IT","Italiano"],["nl-NL","Nederlands"],["zh-CN","中文 (简体)"],["zh-TW","中文 (繁體)"],["ja-JP","日本語"],["ko-KR","한국어"],["ar-SA","العربية"],["hi-IN","हिन्दी"],["ru-RU","Русский"],["tr-TR","Türkçe"],["pl-PL","Polski"],["vi-VN","Tiếng Việt"],["th-TH","ไทย"],["id-ID","Bahasa Indonesia"],["sw-KE","Kiswahili"],["yo-NG","Yorùbá"],["zu-ZA","isiZulu"],["ht-HT","Kreyòl ayisyen"]];
 const NAME=Object.fromEntries(LANGS);
+/* The few languages pinned to the top of the list so they are easy to find.
+   The user's own two chosen languages are added to this set automatically. */
+const PINNED=["en-US","es-CO","fr-FR","zh-CN","sw-KE"];
 const $=id=>document.getElementById(id);
 function load(k,d){try{const v=localStorage.getItem(k);return v===null?d:v}catch(e){return d}}
 function save(k,v){try{localStorage.setItem(k,v)}catch(e){}}
-for(const s of [$("meLang"),$("themLang")]) for(const [c,n] of LANGS){const o=document.createElement("option");o.value=c;o.textContent=n;s.appendChild(o)}
+function fillLangSelect(sel,current){
+  sel.innerHTML="";
+  const pin=[...new Set([...PINNED,current])].filter(c=>NAME[c]);
+  const gTop=document.createElement("optgroup");gTop.label="⭐ Most used";
+  for(const c of pin){const o=document.createElement("option");o.value=c;o.textContent=NAME[c];gTop.appendChild(o)}
+  sel.appendChild(gTop);
+  const gAll=document.createElement("optgroup");gAll.label="All languages (A–Z)";
+  const rest=LANGS.filter(([c])=>!pin.includes(c)).slice().sort((a,b)=>a[1].localeCompare(b[1],"en"));
+  for(const [c,n] of rest){const o=document.createElement("option");o.value=c;o.textContent=n;gAll.appendChild(o)}
+  sel.appendChild(gAll);
+  sel.value=current;
+}
 
 const S={mode:load("mode","conv"),me:load("me","en-US"),them:load("them","es-CO"),turn:"me",live:false,
   voice:load("voice","1")==="1",listenVoice:load("listenVoice","0")==="1",rate:+load("rate","0.95"),speaking:false,stopSpeak:null,log:[],wake:null};
-$("meLang").value=S.me;$("themLang").value=S.them;
+fillLangSelect($("meLang"),S.me);fillLangSelect($("themLang"),S.them);
 const base=l=>(l||"").split("-")[0].toLowerCase();
 const apiCode=l=>base(l)==="zh"?"zh-CN":base(l);
 const short=l=>(NAME[l]||l).replace(/ \(.*\)/,"");
@@ -150,6 +167,38 @@ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   }
 })();
 
+/* ===== Offline travel phrasebook =====
+   A small set of the phrases people need most when there is NO internet.
+   Keyed by the English phrase, then by base language code. Matching is loose
+   (lower-cased, punctuation trimmed) so "Hello!" still finds "hello".
+   This is a safety net for common phrases only — full free-text translation
+   still needs a connection. */
+const PHRASES=[
+  ["hello",            {es:"Hola",fr:"Bonjour",zh:"你好",sw:"Habari",pt:"Olá",de:"Hallo",ar:"مرحبا",hi:"नमस्ते"}],
+  ["thank you",        {es:"Gracias",fr:"Merci",zh:"谢谢",sw:"Asante",pt:"Obrigado",de:"Danke",ar:"شكرا",hi:"धन्यवाद"}],
+  ["yes",              {es:"Sí",fr:"Oui",zh:"是",sw:"Ndiyo",pt:"Sim",de:"Ja",ar:"نعم",hi:"हाँ"}],
+  ["no",               {es:"No",fr:"Non",zh:"不",sw:"Hapana",pt:"Não",de:"Nein",ar:"لا",hi:"नहीं"}],
+  ["please",           {es:"Por favor",fr:"S'il vous plaît",zh:"请",sw:"Tafadhali",pt:"Por favor",de:"Bitte",ar:"من فضلك",hi:"कृपया"}],
+  ["excuse me",        {es:"Disculpe",fr:"Excusez-moi",zh:"对不起",sw:"Samahani",pt:"Com licença",de:"Entschuldigung",ar:"عذرا",hi:"क्षमा करें"}],
+  ["i don't understand",{es:"No entiendo",fr:"Je ne comprends pas",zh:"我不明白",sw:"Sielewi",pt:"Não entendo",de:"Ich verstehe nicht",ar:"لا أفهم",hi:"मैं नहीं समझता"}],
+  ["where is the bathroom", {es:"¿Dónde está el baño?",fr:"Où sont les toilettes ?",zh:"洗手间在哪里？",sw:"Choo kiko wapi?",pt:"Onde fica o banheiro?",de:"Wo ist die Toilette?",ar:"أين الحمام؟",hi:"शौचालय कहाँ है?"}],
+  ["how much is it",   {es:"¿Cuánto cuesta?",fr:"Combien ça coûte ?",zh:"多少钱？",sw:"Ni bei gani?",pt:"Quanto custa?",de:"Wie viel kostet das?",ar:"كم الثمن؟",hi:"यह कितने का है?"}],
+  ["i need a doctor",  {es:"Necesito un médico",fr:"J'ai besoin d'un médecin",zh:"我需要医生",sw:"Ninahitaji daktari",pt:"Preciso de um médico",de:"Ich brauche einen Arzt",ar:"أحتاج طبيبا",hi:"मुझे डॉक्टर चाहिए"}],
+  ["help",             {es:"Ayuda",fr:"Au secours",zh:"救命",sw:"Msaada",pt:"Socorro",de:"Hilfe",ar:"مساعدة",hi:"मदद"}],
+  ["i'm lost",         {es:"Estoy perdido",fr:"Je suis perdu",zh:"我迷路了",sw:"Nimepotea",pt:"Estou perdido",de:"Ich habe mich verlaufen",ar:"أنا تائه",hi:"मैं खो गया हूँ"}],
+  ["good morning",     {es:"Buenos días",fr:"Bonjour",zh:"早上好",sw:"Habari za asubuhi",pt:"Bom dia",de:"Guten Morgen",ar:"صباح الخير",hi:"सुप्रभात"}],
+  ["goodbye",          {es:"Adiós",fr:"Au revoir",zh:"再见",sw:"Kwaheri",pt:"Adeus",de:"Auf Wiedersehen",ar:"وداعا",hi:"अलविदा"}],
+  ["water",            {es:"Agua",fr:"Eau",zh:"水",sw:"Maji",pt:"Água",de:"Wasser",ar:"ماء",hi:"पानी"}]
+];
+const PHRASE_MAP=Object.fromEntries(PHRASES.map(([k,v])=>[k,v]));
+const normPhrase=s=>(s||"").toLowerCase().trim().replace(/[.!?¿¡]/g,"").replace(/\s+/g," ");
+function offlinePhrase(text,to){
+  const t=normPhrase(text),b=base(to);
+  if(b==="en") return PHRASE_MAP[t]?text:null;      // English is the key itself
+  const hit=PHRASE_MAP[t];
+  return hit&&hit[b]?hit[b]:null;
+}
+
 /* ===== Translation (auto-detects the language that was really spoken) ===== */
 async function translate(text,from,to){
   try{
@@ -157,9 +206,16 @@ async function translate(text,from,to){
     const j=await r.json();
     return {text:j[0].map(x=>x[0]).join(""),detected:j[2]||null};
   }catch(e){
-    if(base(from)===base(to)) return {text,detected:null};
-    const r=await fetch("https://api.mymemory.translated.net/get?langpair="+apiCode(from)+"|"+apiCode(to)+"&q="+encodeURIComponent(text));
-    const j=await r.json();return {text:j.responseData.translatedText,detected:null};
+    try{
+      if(base(from)===base(to)) return {text,detected:null};
+      const r=await fetch("https://api.mymemory.translated.net/get?langpair="+apiCode(from)+"|"+apiCode(to)+"&q="+encodeURIComponent(text));
+      const j=await r.json();return {text:j.responseData.translatedText,detected:null};
+    }catch(e2){
+      /* No internet at all: try the offline phrasebook before giving up. */
+      const p=offlinePhrase(text,to);
+      if(p!==null) return {text:p,detected:null,offline:true};
+      const err=new Error("offline");err.offline=true;throw err;
+    }
   }
 }
 
@@ -172,6 +228,9 @@ function pickVoice(lang){
   const norm=v=>v.lang.replace("_","-").toLowerCase(),want=lang.toLowerCase(),b=base(lang);
   const exact=VOICES.filter(v=>norm(v)===want),close=VOICES.filter(v=>base(norm(v))===b);
   const pool=exact.length?exact:close;
+  /* When offline, prefer a voice that lives ON the phone (localService) so it
+     still speaks with no connection. When online, a nicer network voice is fine. */
+  if(!navigator.onLine){const local=pool.find(v=>v.localService);if(local)return local}
   return pool.find(v=>/google|natural|online/i.test(v.name))||pool.find(v=>v.localService)||pool[0]||null;
 }
 function unlockSound(){
@@ -284,7 +343,7 @@ async function handle(text,spokenLang){
   let from=spokenLang,to=speaker==="me"?S.them:S.me;
   status("Translating…",S.live);
   let res;
-  try{res=await translate(text,from,to)}catch(e){status("No internet? Try again.");return}
+  try{res=await translate(text,from,to)}catch(e){status(navigator.onLine?"Couldn't translate — try again.":"Offline — spoken translation needs internet.");return}
   /* Smart detect: if the "wrong" person talked, fix it automatically */
   if(!isListen&&res.detected&&base(res.detected)===base(to)&&base(from)!==base(to)){
     speaker=speaker==="me"?"them":"me";[from,to]=[to,from];
@@ -347,7 +406,7 @@ $("typeForm").onsubmit=async e=>{
   e.preventDefault();const t=$("typeIn").value.trim();if(!t)return;$("typeIn").value="";
   unlockSound();const wasLive=S.live;abortRec();
   const res=await translate(t,S.me,S.them).catch(()=>null);
-  if(!res){status("No internet? Try again.");return}
+  if(!res){status(navigator.onLine?"Couldn't translate — try again.":"Offline — that phrase isn't in the travel phrasebook.");return}
   addMsg({speaker:"me",orig:t,tr:res.text,from:S.me,tl:S.them,time:new Date()});
   await speak(res.text,S.them,true);
   if(wasLive&&S.live){if(S.mode==="conv"){S.turn="them";showTurn()}startRec()}
@@ -382,6 +441,17 @@ window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=
 $("install").onclick=async()=>{if(!installEvt)return;installEvt.prompt();await installEvt.userChoice.catch(()=>{});installEvt=null;$("install").style.display="none"};
 window.addEventListener("appinstalled",()=>{$("install").style.display="none";status("Installed ✓")});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+
+/* ===== Online / offline awareness ===== */
+function showOffline(){
+  const off=!navigator.onLine;
+  $("offbar").classList.toggle("on",off);
+  if(off&&statusText==="Ready")status("Offline — phrasebook only");
+  if(!off&&statusText==="Offline — phrasebook only")status("Ready");
+}
+window.addEventListener("online",showOffline);
+window.addEventListener("offline",showOffline);
+showOffline();
 
 setMode(S.mode);
 </script>
