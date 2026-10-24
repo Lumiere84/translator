@@ -270,15 +270,16 @@ function speak(text,lang,force){
       /* Short pause after cancel(): some Android phones ignore speak() if it comes right after cancel() */
       setTimeout(()=>{
         if(finished)return;
-        let started=false;
+        let started=false,moved=false;
+        const fail=()=>{if(moved||finished)return;moved=true;clearTimeout(watch);next()};
         const u=new SpeechSynthesisUtterance(text);u.lang=lang;u.rate=S.rate;u.volume=1;
         if(useVoice)u.voice=useVoice;
         u.onstart=()=>{started=true;clearTimeout(watch)};
-        u.onend=()=>{if(started)done();else next()};
-        u.onerror=()=>next();
-        try{if(speechSynthesis.paused)speechSynthesis.resume();speechSynthesis.speak(u)}catch(e){next();return}
+        u.onend=()=>{if(started)done();else fail()};
+        u.onerror=()=>{if(started&&!moved)done();else fail()};
+        try{if(speechSynthesis.paused)speechSynthesis.resume();speechSynthesis.speak(u)}catch(e){fail();return}
         /* If the voice hasn't started within 2.5 seconds, it is silently stuck — move on */
-        watch=setTimeout(()=>{if(!started){try{speechSynthesis.cancel()}catch(e){}next()}},2500);
+        watch=setTimeout(()=>{if(!started){fail();try{speechSynthesis.cancel()}catch(e){}}},2500);
       },150);
     };
     const v=pickVoice(lang);
