@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f3b3a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Live Translate">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Shadow Live Translate</title>
+<style>
+:root{--bg:#f3f6f5;--panel:#fff;--fg:#14211f;--muted:#5b6b68;--me:#0f6b66;--them:#b4531f;--line:#d6dfdc;--rec:#c62828;--soft:#e7efed;
+--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1514;--panel:#16201f;--fg:#e7efed;--muted:#93a5a1;--me:#3fb5ad;--them:#f08a4f;--line:#26332f;--rec:#ef5350;--soft:#1d2a28;color-scheme:dark}}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:17px/1.45 var(--font);display:flex;flex-direction:column;gap:8px;padding:max(8px,env(safe-area-inset-top)) 12px max(10px,env(safe-area-inset-bottom));max-width:720px;margin:0 auto}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+h1{font-size:1.05rem;margin:0;display:flex;align-items:center;gap:6px}
+.status{font-size:.82rem;color:var(--muted);text-align:right}
+.status.live{color:var(--rec);font-weight:700}
+button{font:inherit;cursor:pointer}
+.modes{display:flex;gap:6px}
+.modes button{flex:1;padding:9px 4px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--fg);font-size:.9rem}
+.modes button.sel{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:700}
+.langs{display:flex;gap:6px;align-items:end}
+.langs label{flex:1;font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+select,input[type=text]{width:100%;font:inherit;padding:9px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+#swap{flex:none;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--fg);font-size:1.1rem}
+main{flex:1;min-height:0;display:flex;flex-direction:column}
+.view{flex:1;min-height:0;display:none;flex-direction:column;gap:8px}
+.view.on{display:flex}
+.feed{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px}
+.hint{color:var(--muted);text-align:center;margin:auto;padding:16px;max-width:30em}
+.msg{max-width:88%;padding:9px 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.msg.me{align-self:flex-end;border-left:4px solid var(--me)}
+.msg.them{align-self:flex-start;border-left:4px solid var(--them)}
+.msg .small{font-size:.82rem;color:var(--muted)}
+.msg .row{display:flex;gap:8px;align-items:center}
+.msg .big{flex:1;font-size:1.15rem;font-weight:600}
+.listen .msg{max-width:100%;align-self:stretch}.listen .msg .big{font-size:1.3rem}
+.say{flex:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--bg);font-size:1.05rem}
+.half{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:8px}
+.half.flip{transform:rotate(180deg)}
+.half .who{font-size:.8rem;color:var(--muted);text-align:center}
+.half .msg{max-width:100%;align-self:stretch}
+.caption{min-height:2.2em;padding:8px 12px;border-radius:12px;background:var(--soft);font-size:1.05rem;color:var(--fg);display:none}
+.caption.on{display:block}.caption b{color:var(--rec);font-size:.8rem;margin-right:6px}
+.turns{display:flex;gap:6px}
+.turns button,.fmic{flex:1;padding:12px 6px;border-radius:14px;border:2px solid var(--line);background:var(--panel);color:var(--fg);font-weight:700}
+.turns button.me.sel,.fmic.me.sel{border-color:var(--me);background:var(--me);color:#fff}
+.turns button.them.sel,.fmic.them.sel{border-color:var(--them);background:var(--them);color:#fff}
+.go{width:100%;border:0;border-radius:16px;padding:17px;font-size:1.15rem;font-weight:800;color:#fff;background:var(--me)}
+.go.live{background:var(--rec)}
+form.type{display:flex;gap:6px}form.type button{flex:none;width:52px;border-radius:12px;border:0;background:var(--me);color:#fff;font-size:1.2rem}
+.tools{display:flex;gap:6px;flex-wrap:wrap}
+.tools button{flex:1;min-width:64px;padding:8px 4px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg);font-size:.82rem}
+.warn{background:#fff3cd;color:#5c4400;padding:12px;border-radius:12px;font-size:1rem;display:none;text-align:center}
+.openbtn{display:block;margin-top:10px;padding:14px;border-radius:14px;background:#0f6b66;color:#fff;font-weight:700;text-decoration:none}
+#install{display:none;background:var(--me);color:#fff;border:0;border-radius:10px;padding:6px 10px;font-size:.8rem;font-weight:700}
+.hide{display:none!important}
+.offbar{background:#4a3a1a;color:#ffe08a;padding:8px 12px;border-radius:12px;font-size:.9rem;display:none;text-align:center}
+.offbar.on{display:block}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌎 Shadow Live Translate</h1>
+  <div style="display:flex;gap:8px;align-items:center"><button id="install">⬇ Install app</button><span class="status" id="status">Ready</span></div>
+</header>
+<div class="warn" id="warn"></div>
+<div class="offbar" id="offbar">📴 <b>You're offline.</b> Common phrases still translate in French, Chinese and Swahili. Everything else needs internet.</div>
+
+<nav class="modes">
+  <button data-mode="conv">💬 Conversation</button>
+  <button data-mode="listen">👂 Listen</button>
+  <button data-mode="face">🤝 Face to face</button>
+</nav>
+
+<div class="langs">
+  <label><span id="meLabel">I speak</span><select id="meLang"></select></label>
+  <button id="swap" aria-label="Swap languages">⇄</button>
+  <label><span id="themLabel">They speak</span><select id="themLang"></select></label>
+</div>
+
+<main>
+  <section class="view" id="vFeed"><div class="feed" id="feed"></div></section>
+  <section class="view" id="vFace">
+    <div class="half flip" id="halfThem">
+      <div class="who" id="whoThem"></div>
+      <div class="feed" id="feedThem"></div>
+      <button class="fmic them" data-who="them">🎤 Tap to talk</button>
+    </div>
+    <div class="half">
+      <div class="who" id="whoMe"></div>
+      <div class="feed" id="feedMe"></div>
+      <button class="fmic me" data-who="me">🎤 Tap to talk</button>
+    </div>
+  </section>
+</main>
+
+<div class="caption" id="caption"></div>
+
+<div class="turns" id="turns">
+  <button class="me" data-who="me">🎤 Me</button>
+  <button class="them" data-who="them">🎤 Them</button>
+</div>
+<button class="go" id="go">▶ Start</button>
+<form class="type" id="typeForm"><input type="text" id="typeIn" placeholder="Or type here to translate…" autocomplete="off"><button aria-label="Translate">➤</button></form>
+
+<div class="tools">
+  <button id="voice">🔊 Voice: On</button>
+  <button id="speed">🐇 Speed: Normal</button>
+  <button id="flip">↕ Flip top</button>
+  <button id="saveBtn">💾 Save</button>
+  <button id="clear">🗑 Clear</button>
+</div>
+
+<script>
+/* ===== Setup ===== */
+const LANGS=[["en-US","English"],["es-CO","Español (Colombia)"],["es-ES","Español (España)"],["es-MX","Español (México)"],["fr-FR","Français"],["pt-BR","Português"],["de-DE","Deutsch"],["it-IT","Italiano"],["nl-NL","Nederlands"],["zh-CN","中文"],["ja-JP","日本語"],["ko-KR","한국어"],["ar-SA","العربية"],["hi-IN","हिन्दी"],["ru-RU","Русский"],["tr-TR","Türkçe"],["pl-PL","Polski"],["vi-VN","Tiếng Việt"],["th-TH","ไทย"],["id-ID","Bahasa Indonesia"],["sw-KE","Kiswahili"],["yo-NG","Yorùbá"],["zu-ZA","isiZulu"],["ht-HT","Kreyòl ayisyen"]];
+const NAME=Object.fromEntries(LANGS);
+const $=id=>document.getElementById(id);
+function load(k,d){try{const v=localStorage.getItem(k);return v===null?d:v}catch(e){return d}}
+function save(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+for(const s of [$("meLang"),$("themLang")]) for(const [c,n] of LANGS){const o=document.createElement("option");o.value=c;o.textContent=n;s.appendChild(o)}
+
+const S={mode:load("mode","conv"),me:load("me","en-US"),them:load("them","es-CO"),turn:"me",live:false,
+  voice:load("voice","1")==="1",listenVoice:load("listenVoice","0")==="1",rate:+load("rate","0.95"),speaking:false,stopSpeak:null,log:[],wake:null};
+$("meLang").value=S.me;$("themLang").value=S.them;
+const base=l=>(l||"").split("-")[0].toLowerCase();
+const apiCode=l=>base(l)==="zh"?"zh-CN":base(l);
+const short=l=>(NAME[l]||l).replace(/ \(.*\)/,"");
+let statusText="Ready";
+function status(t,live){statusText=t;$("status").textContent=t;$("status").classList.toggle("live",!!live)}
+
+/* ===== Can this browser hear speech? ===== */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+(function(){
+  const ua=navigator.userAgent,isAndroid=/Android/i.test(ua),isIOS=/iPhone|iPad|iPod/i.test(ua);
+  const inApp=/; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\/|Telegram/i.test(ua)||(isIOS&&!/Safari/i.test(ua));
+  if(!inApp&&SR) return;
+  const w=$("warn");w.style.display="block";
+  if(isAndroid){
+    const url="intent://"+location.host+location.pathname+"#Intent;scheme=https;package=com.android.chrome;end";
+    w.innerHTML='This app can\'t use the microphone here.<a class="openbtn" href="'+url+'">Open in Chrome</a>';
+  }else if(isIOS){
+    w.innerHTML='This app can\'t use the microphone here. Tap the <b>⋯</b> or <b>compass</b> button and choose <b>Open in Safari</b>. Typing still works.';
+  }else{
+    w.innerHTML='This browser can\'t listen to speech. Please open this page in <b>Microsoft Edge</b> or <b>Chrome</b>. Typing still works.';
+  }
+})();
+
+/* ===== Offline phrasebook: French, Chinese, Swahili =====
+   Used ONLY when there is no internet. Works both ways (English -> fr/zh/sw and back). */
+const PHRASES=[
+  ["hello",{fr:"Bonjour",zh:"你好",sw:"Habari"}],
+  ["thank you",{fr:"Merci",zh:"谢谢",sw:"Asante"}],
+  ["yes",{fr:"Oui",zh:"是",sw:"Ndiyo"}],
+  ["no",{fr:"Non",zh:"不",sw:"Hapana"}],
+  ["please",{fr:"S'il vous plaît",zh:"请",sw:"Tafadhali"}],
+  ["excuse me",{fr:"Excusez-moi",zh:"打扰一下",sw:"Samahani"}],
+  ["i don't understand",{fr:"Je ne comprends pas",zh:"我不明白",sw:"Sielewi"}],
+  ["where is the bathroom",{fr:"Où sont les toilettes ?",zh:"洗手间在哪里？",sw:"Choo kiko wapi?"}],
+  ["how much is it",{fr:"Combien ça coûte ?",zh:"多少钱？",sw:"Ni bei gani?"}],
+  ["i need a doctor",{fr:"J'ai besoin d'un médecin",zh:"我需要医生",sw:"Ninahitaji daktari"}],
+  ["help",{fr:"Au secours",zh:"救命",sw:"Msaada"}],
+  ["i'm lost",{fr:"Je suis perdu",zh:"我迷路了",sw:"Nimepotea"}],
+  ["good morning",{fr:"Bonjour",zh:"早上好",sw:"Habari za asubuhi"}],
+  ["goodbye",{fr:"Au revoir",zh:"再见",sw:"Kwaheri"}],
+  ["water",{fr:"De l'eau",zh:"水",sw:"Maji"}]
+];
+const normPhrase=t=>(t||"").toLowerCase().trim().replace(/[.!?¿¡？。！,，]/g,"").replace(/\s+/g," ").trim();
+function offlinePhrase(text,to){
+  const t=normPhrase(text),b=base(to);
+  for(const [en,tr] of PHRASES){
+    const all=[en,...Object.values(tr).map(normPhrase)];
+    if(all.includes(t)) return b==="en"?en.charAt(0).toUpperCase()+en.slice(1):(tr[b]||null);
+  }
+  return null;
+}
+
+/* ===== Translation (auto-detects the language that was really spoken) ===== */
+async function translate(text,from,to){
+  try{
+    const r=await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl="+apiCode(to)+"&q="+encodeURIComponent(text));
+    const j=await r.json();
+    return {text:j[0].map(x=>x[0]).join(""),detected:j[2]||null};
+  }catch(e){
+    if(base(from)===base(to)) return {text,detected:null};
+    try{
+      const r=await fetch("https://api.mymemory.translated.net/get?langpair="+apiCode(from)+"|"+apiCode(to)+"&q="+encodeURIComponent(text));
+      const j=await r.json();return {text:j.responseData.translatedText,detected:null};
+    }catch(e2){
+      /* No internet: use the offline phrasebook */
+      const p=offlinePhrase(text,to);
+      if(p!==null) return {text:p,detected:null};
+      throw e2;
+    }
+  }
+}
+
+/* ===== Speaking out loud ===== */
+let VOICES=[];
+function loadVoices(){if(window.speechSynthesis)VOICES=speechSynthesis.getVoices()}
+loadVoices();if(window.speechSynthesis)speechSynthesis.onvoiceschanged=loadVoices;
+const player=new Audio();
+function pickVoice(lang){
+  const norm=v=>v.lang.replace("_","-").toLowerCase(),want=lang.toLowerCase(),b=base(lang);
+  const exact=VOICES.filter(v=>norm(v)===want),close=VOICES.filter(v=>base(norm(v))===b);
+  const pool=exact.length?exact:close;
+  return pool.find(v=>/google|natural|online/i.test(v.name))||pool.find(v=>v.localService)||pool[0]||null;
+}
+function unlockSound(){
+  try{if(window.speechSynthesis){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(" ");u.volume=0;speechSynthesis.speak(u)}}catch(e){}
+  try{player.muted=true;player.src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";const p=player.play();if(p)p.catch(()=>{}).finally(()=>{player.muted=false})}catch(e){}
+}
+function stopSpeaking(){
+  try{speechSynthesis.cancel()}catch(e){}
+  try{player.pause()}catch(e){}
+  if(S.stopSpeak)S.stopSpeak();
+}
+/* Returns a promise that finishes when the voice is done, so the mic never hears the phone talking */
+function speak(text,lang,force){
+  return new Promise(resolve=>{
+    const wanted=force||(S.mode==="listen"?S.listenVoice:S.voice);
+    if(!wanted||!text) return resolve();
+    let finished=false;
+    const done=()=>{if(finished)return;finished=true;clearTimeout(timer);S.speaking=false;S.stopSpeak=null;resolve()};
+    const timer=setTimeout(done,4000+text.length*110/S.rate);
+    S.speaking=true;S.stopSpeak=done;
+    const online=()=>{
+      player.muted=false;player.onended=done;player.onerror=done;player.playbackRate=S.rate>1?1.15:1;
+      player.src="https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl="+apiCode(lang)+"&q="+encodeURIComponent(text.slice(0,200));
+      player.play().catch(()=>{status("Tap 🔊 on a message to hear it");done()});
+    };
+    const v=pickVoice(lang);
+    if(window.speechSynthesis&&v){
+      speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(text);u.lang=lang;u.voice=v;u.rate=S.rate;
+      u.onend=done;u.onerror=online;speechSynthesis.speak(u);
+    }else online();
+  });
+}
+
+/* ===== Messages ===== */
+function addMsg(m){S.log.push(m);render()}
+function bubble(m,viewer){
+  const d=document.createElement("div");d.className="msg "+m.speaker;
+  let big,small;
+  if(!viewer){big=m.tr;small=m.orig}
+  else{const own=m.speaker===viewer;big=own?m.orig:m.tr;small=own?m.tr:m.orig}
+  d.innerHTML='<div class="small"></div><div class="row"><div class="big"></div><button class="say" aria-label="Play out loud">🔊</button></div>';
+  d.querySelector(".small").textContent=small;d.querySelector(".big").textContent=big;
+  d.querySelector(".say").onclick=async()=>{
+    const wasLive=S.live;abortRec();unlockSound();
+    await speak(m.tr,m.tl,true);
+    if(wasLive&&S.live)startRec();
+  };
+  return d;
+}
+function fill(el,viewer,hint){
+  el.innerHTML="";
+  if(!S.log.length){const h=document.createElement("div");h.className="hint";h.textContent=hint;el.appendChild(h);return}
+  for(const m of S.log)el.appendChild(bubble(m,viewer));
+  el.scrollTop=1e9;
+}
+function render(){
+  const meN=short(S.me),thN=short(S.them);
+  if(S.mode==="face"){
+    fill($("feedMe"),"me","Tap 🎤 and speak "+meN+".");
+    fill($("feedThem"),"them","Toca 🎤 / Tap 🎤 — "+thN+".");
+    $("feedThem").scrollTop=1e9;
+  }else{
+    $("vFeed").className="view on"+(S.mode==="listen"?" listen":"");
+    fill($("feed"),null,S.mode==="listen"
+      ?"Tap ▶ Start Listening. Everything I hear in "+thN+" appears here in "+meN+", live — great for TV, a lecture, a doctor, or a tour guide."
+      :"Tap ▶ Start Live. Then just talk. When you pause, I translate out loud and automatically listen for the other person. Tap 🎤 Me or 🎤 Them anytime to choose who talks next.");
+  }
+}
+
+/* ===== Live listening engine ===== */
+let rec=null;
+function currentLang(){return S.mode==="listen"?S.them:(S.turn==="me"?S.me:S.them)}
+function caption(t){
+  const c=$("caption");
+  if(!S.live){c.classList.remove("on");return}
+  c.classList.add("on");
+  c.innerHTML="<b>🎤 "+short(currentLang()).toUpperCase()+"</b>";
+  c.appendChild(document.createTextNode(t||"listening…"));
+}
+function abortRec(){if(rec){rec._skip=true;try{rec.abort()}catch(e){}rec=null}stopSpeaking()}
+function startRec(){
+  if(!S.live||S.speaking||rec||!SR) return;
+  const lang=currentLang();
+  const r=new SR();rec=r;
+  r.lang=lang;r.interimResults=true;r.continuous=false;r.maxAlternatives=1;
+  let finalText="";
+  r.onresult=e=>{
+    let interim="";
+    for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i];if(x.isFinal)finalText+=x[0].transcript;else interim+=x[0].transcript}
+    caption((finalText+" "+interim).trim());
+  };
+  r.onerror=e=>{
+    if(e.error==="not-allowed"||e.error==="service-not-allowed"){stopLive();status("Microphone blocked — tap the 🔒 lock by the address and allow Microphone")}
+    else if(e.error==="network"){status("No internet — retrying…",true)}
+  };
+  r.onend=async()=>{
+    if(rec===r)rec=null;
+    if(r._skip||!S.live)return;
+    const t=finalText.trim();
+    if(t){caption("");await handle(t,lang)}
+    if(S.live)setTimeout(startRec,t?200:120);
+  };
+  try{r.start();status(S.mode==="listen"?"Listening…":"Live — "+(S.turn==="me"?"your turn":"their turn"),true);caption("")}
+  catch(e){rec=null;setTimeout(startRec,500)}
+}
+async function handle(text,spokenLang){
+  const isListen=S.mode==="listen";
+  let speaker=isListen?"them":S.turn;
+  let from=spokenLang,to=speaker==="me"?S.them:S.me;
+  status("Translating…",S.live);
+  let res;
+  try{res=await translate(text,from,to)}catch(e){status("No internet? Try again.");return}
+  /* Smart detect: if the "wrong" person talked, fix it automatically */
+  if(!isListen&&res.detected&&base(res.detected)===base(to)&&base(from)!==base(to)){
+    speaker=speaker==="me"?"them":"me";[from,to]=[to,from];
+    try{res=await translate(text,from,to)}catch(e){}
+  }
+  addMsg({speaker,orig:text,tr:res.text,from,tl:to,time:new Date()});
+  if(!isListen){S.turn=speaker==="me"?"them":"me";showTurn()}
+  await speak(res.text,to);
+  if(S.live)status(isListen?"Listening…":"Live — "+(S.turn==="me"?"your turn":"their turn"),true);else status("Ready");
+}
+async function keepAwake(){try{if("wakeLock" in navigator&&S.live&&!S.wake)S.wake=await navigator.wakeLock.request("screen")}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){S.wake=null;keepAwake()}});
+function startLive(){
+  if(!SR){status("Speech not available here — typing still works");return}
+  unlockSound();S.live=true;keepAwake();showTurn();startRec();
+}
+function stopLive(){
+  S.live=false;abortRec();caption("");
+  try{if(S.wake){S.wake.release();S.wake=null}}catch(e){}
+  showTurn();status("Ready");
+}
+function setTurn(who){
+  S.turn=who;
+  if(S.mode==="listen")return;
+  if(!S.live){startLive();return}
+  abortRec();showTurn();startRec();
+}
+function showTurn(){
+  const meN=short(S.me),thN=short(S.them);
+  const tb=$("turns").children;
+  tb[0].textContent="🎤 Me · "+meN;tb[1].textContent="🎤 Them · "+thN;
+  for(const b of [...tb,...document.querySelectorAll(".fmic")]) b.classList.toggle("sel",S.live&&b.dataset.who===S.turn);
+  for(const b of document.querySelectorAll(".fmic")) b.textContent=S.live&&b.dataset.who===S.turn?"🎤 Listening — speak now":"🎤 Tap to talk";
+  const go=$("go");go.classList.toggle("live",S.live);
+  go.textContent=S.live?"⏹ Stop":(S.mode==="listen"?"▶ Start Listening":S.mode==="face"?"▶ Start Live (face to face)":"▶ Start Live Conversation");
+  $("whoMe").textContent="Me · "+meN;$("whoThem").textContent=thN;
+  caption(S.live?"":"");
+}
+
+/* ===== Modes & controls ===== */
+function setMode(m){
+  if(S.live)stopLive();
+  S.mode=m;save("mode",m);
+  for(const b of document.querySelectorAll(".modes button"))b.classList.toggle("sel",b.dataset.mode===m);
+  $("vFeed").classList.toggle("on",m!=="face");$("vFace").classList.toggle("on",m==="face");
+  $("turns").classList.toggle("hide",m!=="conv");
+  $("typeForm").classList.toggle("hide",m==="face");
+  $("flip").classList.toggle("hide",m!=="face");
+  $("meLabel").textContent=m==="listen"?"Show me in":"I speak";
+  $("themLabel").textContent=m==="listen"?"They speak":"They speak";
+  showVoice();showTurn();render();
+}
+for(const b of document.querySelectorAll(".modes button"))b.onclick=()=>setMode(b.dataset.mode);
+for(const b of document.querySelectorAll("[data-who]"))b.onclick=()=>setTurn(b.dataset.who);
+$("go").onclick=()=>S.live?stopLive():startLive();
+$("meLang").onchange=e=>{S.me=e.target.value;save("me",S.me);if(S.live){abortRec();startRec()}showTurn();render()};
+$("themLang").onchange=e=>{S.them=e.target.value;save("them",S.them);if(S.live){abortRec();startRec()}showTurn();render()};
+$("swap").onclick=()=>{[S.me,S.them]=[S.them,S.me];$("meLang").value=S.me;$("themLang").value=S.them;save("me",S.me);save("them",S.them);if(S.live){abortRec();startRec()}showTurn();render()};
+$("typeForm").onsubmit=async e=>{
+  e.preventDefault();const t=$("typeIn").value.trim();if(!t)return;$("typeIn").value="";
+  unlockSound();const wasLive=S.live;abortRec();
+  const res=await translate(t,S.me,S.them).catch(()=>null);
+  if(!res){status("No internet? Try again.");return}
+  addMsg({speaker:"me",orig:t,tr:res.text,from:S.me,tl:S.them,time:new Date()});
+  await speak(res.text,S.them,true);
+  if(wasLive&&S.live){if(S.mode==="conv"){S.turn="them";showTurn()}startRec()}
+};
+function showVoice(){
+  const on=S.mode==="listen"?S.listenVoice:S.voice;
+  $("voice").textContent=on?"🔊 Voice: On":"🔇 Voice: Off";
+  $("speed").textContent=S.rate<0.9?"🐢 Speed: Slow":"🐇 Speed: Normal";
+}
+$("voice").onclick=()=>{
+  if(S.mode==="listen"){S.listenVoice=!S.listenVoice;save("listenVoice",S.listenVoice?"1":"0")}
+  else{S.voice=!S.voice;save("voice",S.voice?"1":"0")}
+  showVoice();unlockSound();
+};
+$("speed").onclick=()=>{S.rate=S.rate<0.9?0.95:0.75;save("rate",String(S.rate));showVoice()};
+$("flip").onclick=()=>$("halfThem").classList.toggle("flip");
+$("clear").onclick=()=>{if(!S.log.length||confirm("Clear the whole conversation?")){S.log=[];render()}};
+$("saveBtn").onclick=()=>{
+  if(!S.log.length){status("Nothing to save yet");return}
+  const p=n=>String(n).padStart(2,"0"),d=new Date();
+  const lines=["Shadow Live Translate — "+d.toLocaleString(),""];
+  for(const m of S.log){lines.push("["+m.time.toLocaleTimeString()+"] "+(m.speaker==="me"?"ME":"THEM")+" ("+short(m.from)+"): "+m.orig);lines.push("    → ("+short(m.tl)+"): "+m.tr);lines.push("")}
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([lines.join("\r\n")],{type:"text/plain;charset=utf-8"}));
+  a.download="Translation_"+d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+".txt";
+  document.body.appendChild(a);a.click();a.remove();status("Saved to Downloads");
+};
+
+/* ===== Install as its own app ===== */
+let installEvt=null;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;$("install").style.display="inline-block"});
+$("install").onclick=async()=>{if(!installEvt)return;installEvt.prompt();await installEvt.userChoice.catch(()=>{});installEvt=null;$("install").style.display="none"};
+window.addEventListener("appinstalled",()=>{$("install").style.display="none";status("Installed ✓")});
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+
+/* ===== Show the offline banner when there is no internet ===== */
+function showOffline(){$("offbar").classList.toggle("on",!navigator.onLine)}
+window.addEventListener("online",showOffline);window.addEventListener("offline",showOffline);showOffline();
+
+setMode(S.mode);
+</script>
+</body>
+</html>

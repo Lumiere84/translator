@@ -109,21 +109,39 @@ function unlockSound(){
   try{if(window.speechSynthesis){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(" ");u.volume=0;speechSynthesis.speak(u)}}catch(e){}
   try{player.muted=true;player.src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";const p=player.play();if(p)p.catch(()=>{}).finally(()=>{player.muted=false})}catch(e){}
 }
+/* Google's online voice: the most reliable sound on phones (needs internet). */
 function onlineVoice(text,lang){
-  player.muted=false;
+  player.muted=false;player.volume=1;
   player.src="https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl="+lang.split("-")[0]+"&q="+encodeURIComponent(text.slice(0,200));
   return player.play();
 }
+/* The phone's own built-in voice (works with no internet, if the phone has that language). */
+function phoneVoice(text,lang){
+  return new Promise((ok,fail)=>{
+    if(!window.speechSynthesis){fail();return}
+    const v=pickVoice(lang);
+    if(speechSynthesis.speaking||speechSynthesis.pending)speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);u.lang=lang;if(v)u.voice=v;u.rate=0.95;u.volume=1;
+    let started=false;
+    u.onstart=()=>{started=true;ok()};
+    u.onerror=()=>{if(!started)fail()};
+    /* Some phones never start and never report an error: give up after 3 seconds */
+    setTimeout(()=>{if(!started){try{speechSynthesis.cancel()}catch(e){}fail()}},3000);
+    speechSynthesis.speak(u);
+  });
+}
+/* With internet: Google's voice first, phone voice as backup.
+   With no internet: phone voice only. */
 function speak(text,lang){
   if(!voiceOn||!text) return;
-  const v=pickVoice(lang);
-  if(window.speechSynthesis&&v){
-    speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(text);u.lang=lang;u.voice=v;u.rate=0.95;
-    u.onerror=()=>onlineVoice(text,lang).catch(()=>{});
-    speechSynthesis.speak(u);
+  const tell=()=>status("Tap 🔊 on the message to hear it");
+  if(navigator.onLine){
+    let backup=false;
+    const useBackup=()=>{if(backup)return;backup=true;phoneVoice(text,lang).catch(tell)};
+    player.onerror=useBackup;
+    onlineVoice(text,lang).catch(useBackup);
   }else{
-    onlineVoice(text,lang).catch(()=>status("Tap 🔊 on the message to hear it"));
+    phoneVoice(text,lang).catch(tell);
   }
 }
 function add(logId,orig,tr,lang){
